@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /products/{docId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth.token.role == 'superadmin';
+    }
+    match /clients/{docId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth.token.role == 'superadmin';
+    }
+    match /invoices/{docId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth.token.role == 'superadmin';
+      allow update: if request.auth.token.role == 'superadmin';
+      allow delete: if request.auth.token.role == 'superadmin';
+    }
+  }
+}

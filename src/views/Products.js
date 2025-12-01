@@ -1,0 +1,1 @@
+export default function Products(){return <h1>Gestion Produits prêt</h1>}
