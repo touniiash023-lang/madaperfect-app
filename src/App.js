@@ -11,6 +11,10 @@ import { ChartBarIcon, BanknotesIcon, UsersIcon } from '@heroicons/react/24/soli
 import dayjs from 'dayjs';
 
 export default function App() {
+  // 🔍 Recherche produits
+  const [searchClient, setSearchClient] = useState("");
+const [searchProduct, setSearchProduct] = useState("");
+
   const [lightboxImage, setLightboxImage] = useState(null);
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null); // 'superadmin' or 'commercial'
@@ -20,6 +24,36 @@ export default function App() {
   const [products, setProducts] = useState([]);
   const [clients, setClients] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  // 🔍 Recherche factures
+const [searchInvoice, setSearchInvoice] = useState("");
+  
+const filteredProducts = products.filter(p =>
+  p.name?.toLowerCase().includes(searchProduct.toLowerCase()) ||
+  p.description?.toLowerCase().includes(searchProduct.toLowerCase())
+);
+
+
+
+
+const filteredInvoices = invoices.filter(inv => {
+  const client = clients.find(c => c.id === inv.clientId);
+  const clientName = client?.name?.toLowerCase() || "";
+
+  return (
+    inv.number?.toLowerCase().includes(searchInvoice.toLowerCase()) ||
+    inv.date?.toLowerCase().includes(searchInvoice.toLowerCase()) ||
+    clientName.includes(searchInvoice.toLowerCase())
+  );
+});
+
+// 🔍 Recherche clients
+
+const filteredClients = clients.filter(c =>
+  c.name?.toLowerCase().includes(searchClient.toLowerCase()) ||
+  c.phone?.toLowerCase().includes(searchClient.toLowerCase()) ||
+  c.address?.toLowerCase().includes(searchClient.toLowerCase())
+);
+
 /* Place ce code juste avant return() */
 // 📌 Date helpers
 const today = new Date().toISOString().slice(0,10);
@@ -209,6 +243,19 @@ const topProducts = (() => {
     loadProducts();
   }
 
+  // ➕ Ajouter un client
+async function addClientFirestore() {
+  if (!clientForm.name) return alert("Nom obligatoire");
+
+  await addDoc(collection(db, "clients"), {
+    name: clientForm.name,
+    address: clientForm.address || "",
+    phone: clientForm.phone || ""
+  });
+
+  setClientForm({ id: null, name: "", address: "", phone: "" });
+}
+
   // Clients CRUD (admin-only)
   async function saveClientFirestore() {
     if (!clientForm.name) return alert('Nom requis');
@@ -303,6 +350,18 @@ function generateInvoicePDF(inv) {
   const margin = 40;
   let y = margin;
 
+function formatDateFR(isoDate) {
+  if (!isoDate) return "";
+
+  const moisFR = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+  ];
+
+  const [year, month, day] = isoDate.split("-");
+
+  return `${day} ${moisFR[Number(month) - 1]} ${year}`;
+}
 
 
   // Header
@@ -333,7 +392,8 @@ function generateInvoicePDF(inv) {
   doc.text(inv.type === "proforma" ? "Facture Proforma" : "Facture Commercial", margin, y);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(11);
-  doc.text(inv.date || "", 480, y);
+  doc.text(formatDateFR(inv.date) || "", 480, y);
+
 
   // Client & delivery block
   y += 26;
@@ -369,34 +429,47 @@ function generateInvoicePDF(inv) {
   doc.setTextColor(0,0,0);
 
   // Products lines
-  y += 22;
-  (inv.items || []).forEach((it, idx) => {
-    const qty = Number(it.qty || 0);
-    const unit = cPrice(it.price);
-    const lineTotal = qty * unit;
+y += 22;
+(inv.items || []).forEach((it, idx) => {
 
-    // if page bottom reached -> add new page
-    if (y + 80 > 820) {
-      doc.addPage();
-      y = margin;
-    }
+  const qty = Number(it.qty || 0);
+  const unit = cPrice(it.price);
+  const lineTotal = qty * unit;
 
-    doc.rect(margin, y, 520, 22);
-    doc.text(String(qty) + " Pcs", margin + 10, y + 15);
-    doc.text(it.name || "", margin + 110, y + 15);
+  // WRAP : texte long pour la description
+  const text = doc.splitTextToSize(it.name || "", 170); // ← 170px largeur max
 
-    // safe positions to avoid overflow
-    doc.text(fPrice(unit), margin + 280, y + 15, { baseline: "alphabetic" });
-    doc.text(fPrice(lineTotal), margin + 405, y + 15, { baseline: "alphabetic" });
+  const lineHeight = 14;
+  const textHeight = text.length * lineHeight;
 
-    y += 22;
-  });
+  // Auto-height row : calcule hauteur selon contenu
+  const rowHeight = Math.max(22, textHeight + 10);
 
-  // 2 empty lines
-  for (let i=0;i<2;i++) {
-    doc.rect(margin, y, 520, 22);
-    y += 22;
+  // Si page trop basse → nouvelle page
+  if (y + rowHeight > 820) {
+    doc.addPage();
+    y = margin;
   }
+
+  // — Rectangle de la ligne
+  doc.rect(margin, y, 520, rowHeight);
+
+  // — Quantité
+  doc.text(String(qty) + " Pcs", margin + 10, y + 15);
+
+  // — Désignation (multi-lignes)
+  doc.text(text, margin + 110, y + 15);
+
+  // — Prix unitaire
+  doc.text(fPrice(unit), margin + 300, y + 15);
+
+  // — Montant total
+  doc.text(fPrice(lineTotal), margin + 420, y + 15);
+
+  // Move down
+  y += rowHeight;
+});
+
 
   // Totals box (moved left so it aligns with your red line)
   y += 12;
@@ -445,7 +518,7 @@ function generateInvoicePDF(inv) {
       <button onClick={doLogout} className='fixed top-4 right-4 bg-white p-2 rounded shadow' title='Déconnexion'><FiLogOut /></button>
       <div className='flex'>
         <aside className='w-72 bg-indigo-900 text-white min-h-screen p-6'>
-          <h1 className='text-2xl font-bold mb-6'>MadaPerfect</h1>
+          <h1 className='text-2xl font-bold mb-6 flex items-center gap-2'>Mada Perfect Import</h1>
           <nav className='space-y-3'>
             <button onClick={() => setView('dashboard')} className={`w-full text-left px-3 py-2 rounded ${view === 'dashboard' ? 'bg-indigo-700' : ''}`}>Tableau de bord</button>
             <button onClick={() => setView('articles')} className={`w-full text-left px-3 py-2 rounded ${view === 'articles' ? 'bg-indigo-700' : ''}`}>Articles</button>
@@ -593,121 +666,140 @@ function generateInvoicePDF(inv) {
            {/* ---------------------------
    ARTICLES (Produits)
    --------------------------- */}
+{/* ---------------------------
+   ARTICLES (Produits)
+--------------------------- */}
 {view === 'articles' && (
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
     {/* -------------------------
         LISTE DES PRODUITS
     -------------------------- */}
-     <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
+    <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
+
       <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
         🛒 Produits disponibles
       </h3>
 
-  <div className="space-y-6">
+      {/* 🔍 BARRE DE RECHERCHE PRODUITS */}
+      <input
+        type="text"
+        placeholder="🔍 Rechercher un produit..."
+        value={searchProduct}
+        onChange={(e) => setSearchProduct(e.target.value)}
+        className="w-full px-4 py-2 border rounded-lg mb-6 shadow-sm"
+      />
 
-{products.length === 0 && (
+      <div className="space-y-6">
+
+        {filteredProducts.length === 0 && (
           <div className="text-center py-6 text-gray-500 italic">
-            Aucun produit disponible pour le moment.
+            Aucun produit trouvé.
           </div>
         )}
 
-    {products.map(p => {
-      const imagesArray = Array.isArray(p.images)
-    ? p.images
-    : p.images
-    ? [p.images]
-    : [];
+        {/* 🔄 LISTE FILTRÉE DES PRODUITS */}
+        {filteredProducts.map(p => {
 
-    return (
-      
-      <div key={p.id} className="flex items-start justify-between p-4 bg-gray-50 rounded-xl shadow-sm hover:shadow-md transition border border-gray-200"
-          >
-        
-        {/* LEFT — IMAGE + INFO */}
-        <div className="flex gap-4">
+          const imagesArray = Array.isArray(p.images)
+            ? p.images
+            : p.images
+            ? [p.images]
+            : [];
 
-          {/* IMAGE GALLERY */}
-           <div className="flex flex-col gap-2">
-                {imagesArray.length > 0 ? (
-  imagesArray.slice(0, 3).map((img, i) => (
-    <img
-      key={i}
-      src={img}
-      onError={(e) => (e.target.src = "https://via.placeholder.com/80")}
-      className="w-24 h-24 object-cover rounded-lg shadow cursor-pointer hover:scale-105 transition"
-      alt="product"
-    />
-  ))
-) : (
-  <img
-    src="https://via.placeholder.com/80"
-    className="w-24 h-24 object-cover rounded-lg opacity-60"
-    alt="placeholder"
-  />
-)}
+          return (
+            <div
+              key={p.id}
+              className="flex items-start justify-between p-4 bg-gray-50 rounded-xl shadow-sm hover:shadow-md transition border border-gray-200"
+            >
 
+              {/* LEFT — IMAGE + INFO */}
+              <div className="flex gap-4">
+
+                {/* IMAGE GALLERY */}
+                <div className="flex flex-col gap-2">
+                  {imagesArray.length > 0 ? (
+                    imagesArray.slice(0, 3).map((img, i) => (
+                      <img
+                        key={i}
+                        src={img}
+                        onError={(e) => (e.target.src = "https://via.placeholder.com/80")}
+                        className="w-24 h-24 object-cover rounded-lg shadow cursor-pointer hover:scale-105 transition"
+                        alt="product"
+                      />
+                    ))
+                  ) : (
+                    <img
+                      src="https://via.placeholder.com/80"
+                      className="w-24 h-24 object-cover rounded-lg opacity-60"
+                      alt="placeholder"
+                    />
+                  )}
+                </div>
+
+                {/* PRODUCT INFO */}
+                <div>
+                  <h4 className="text-xl font-bold text-gray-800">{p.name}</h4>
+                  <p className="text-gray-600 max-w-md mt-1">
+                    {p.description || "Aucune description fournie"}
+                  </p>
+
+                  {p.link && (
+                    <a
+                      href={p.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-600 text-sm underline mt-2 inline-block"
+                    >
+                      Voir lien fournisseur
+                    </a>
+                  )}
+                </div>
               </div>
 
-          {/* PRODUCT INFO */}
-          <div>
-                <h4 className="text-xl font-bold text-gray-800">{p.name}</h4>
-                <p className="text-gray-600 max-w-md mt-1">
-                  {p.description || "Aucune description fournie"}
-                </p>
+              {/* RIGHT — PRICE + BUTTONS */}
+              <div className="text-right min-w-[140px]">
+                <div className="text-xl font-bold text-indigo-700 mb-3">
+                  {formatMG(p.price)}
+                </div>
 
-                {p.link && (
-                  <a
-                    href={p.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-indigo-600 text-sm underline mt-2 inline-block"
+                <div className="flex flex-col gap-2">
+
+                  <button
+                    onClick={() => {
+                      setProductForm({
+                        id: p.id,
+                        name: p.name || "",
+                        price: p.price || "",
+                        description: p.description || "",
+                        link: p.link || "",
+                        images: Array.isArray(p.images)
+                          ? p.images.filter((img) => img.startsWith("http"))
+                          : [],
+                      });
+                    }}
+                    className="px-3 py-1 text-sm rounded-lg bg-yellow-400 hover:bg-yellow-500 font-semibold shadow"
+                    disabled={!isAdmin()}
                   >
-                    Voir lien fournisseur
-                  </a>
-                )}
+                    Modifier
+                  </button>
+
+                  <button
+                    onClick={() => deleteProductFirestore(p.id)}
+                    className="px-3 py-1 text-sm rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold shadow"
+                    disabled={!isAdmin()}
+                  >
+                    Supprimer
+                  </button>
+
+                </div>
               </div>
             </div>
-
-        {/* RIGHT — PRICE + BUTTONS */}
-        <div className="text-right min-w-[140px]">
-              <div className="text-xl font-bold text-indigo-700 mb-3">
-                {formatMG(p.price)}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => {
-                    setProductForm({
-                      id: p.id,
-                      name: p.name || "",
-                      price: p.price || "",
-                      description: p.description || "",
-                      link: p.link || "",
-                      images: Array.isArray(p.images)
-                        ? p.images.filter((img) => img.startsWith("http"))
-                        : [],
-                    });
-                  }}
-                  className="px-3 py-1 text-sm rounded-lg bg-yellow-400 hover:bg-yellow-500 font-semibold shadow"
-                  disabled={!isAdmin()}
-                >
-                  Modifier
-                </button>
-
-                <button
-                  onClick={() => deleteProductFirestore(p.id)}
-                  className="px-3 py-1 text-sm rounded-lg bg-red-500 hover:bg-red-600 text-white font-semibold shadow"
-                  disabled={!isAdmin()}
-                >
-                  Supprimer
-                </button>
-              </div>
-            </div>
-           </div>
-  );
-})}
+          );
+        })}
       </div>
     </div>
+
 
      {/* -------------------------
         FORMULAIRE AJOUT / EDIT
@@ -815,6 +907,14 @@ function generateInvoicePDF(inv) {
   <div className='grid grid-cols-3 gap-6'>
     <div className='col-span-2 bg-white p-4 rounded shadow'>
       <h3 className='font-semibold mb-3'>Liste des clients</h3>
+      <input
+        type="text"
+        placeholder="🔍 Rechercher un client..."
+        value={searchClient}
+        onChange={(e) => setSearchClient(e.target.value)}
+        className="w-full px-3 py-2 border rounded mb-4 shadow-sm"
+      />
+
       <table className='w-full text-sm'>
         <thead><tr><th>Nom</th><th>Adresse</th><th>Téléphone</th><th></th></tr></thead>
         <tbody>
@@ -849,12 +949,14 @@ function generateInvoicePDF(inv) {
   </div>
 )}
 
+
+
 {/* ---------------------------
    FACTURES (Invoices)
    --------------------------- */}
 {view === 'invoices' && (
-  <div className='grid grid-cols-3 gap-6'>
-    <div className='col-span-2 bg-white p-4 rounded shadow'>
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
       <h3 className='font-semibold mb-3'>{editingInvoice ? 'Modifier facture' : 'Créer facture'}</h3>
 
       <label>Type</label>
@@ -863,17 +965,77 @@ function generateInvoicePDF(inv) {
         <option value='proforma'>Facture Proforma</option>
       </select>
 
-      <label>Client</label>
-      <select value={invoiceDraft.clientId || ''} onChange={e=>setInvoiceDraft(d=>({...d, clientId: e.target.value}))} className='w-full px-2 py-2 border rounded mb-2'>
-        <option value=''>-- Choisir client --</option>
-        {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-      </select>
+      {/* 🔍 Recherche Client */}
+<label>Client</label>
+<input
+  type="text"
+  placeholder="Rechercher un client..."
+  value={searchClient || ""}
+  onChange={(e) => setSearchClient(e.target.value)}
+  className="w-full px-3 py-2 border rounded mb-2"
+/>
+
+{/* Résultats filtrés */}
+<div className="bg-white border rounded shadow max-h-40 overflow-y-auto mb-4">
+  {clients
+    .filter(c =>
+      c.name.toLowerCase().includes((searchClient || "").toLowerCase())
+    )
+    .map(c => (
+      <div
+        key={c.id}
+        onClick={() => {
+          setInvoiceDraft(d => ({ ...d, clientId: c.id }));
+          setSearchClient(c.name); // affiche le nom dans l’input
+        }}
+        className="px-3 py-2 hover:bg-indigo-100 cursor-pointer"
+      >
+        {c.name}
+      </div>
+    ))}
+</div>
+
 
       <label>Ajouter produit</label>
-      <select onChange={e => { if(e.target.value){ const pid = e.target.value; const prod = products.find(p=>p.id===pid); if(prod) setInvoiceDraft(d=>({...d, items:[...d.items, { id: Date.now(), productId: prod.id, name: prod.name, qty:1, price: prod.price }]})); e.target.value=''; } }} className='w-full px-2 py-2 border rounded mb-4'>
-        <option value=''>-- Choisir produit --</option>
-        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
+<input
+  type="text"
+  placeholder="Rechercher un produit..."
+  value={searchProduct || ""}
+  onChange={(e) => setSearchProduct(e.target.value)}
+  className="w-full px-3 py-2 border rounded mb-2"
+/>
+
+<div className="bg-white border rounded shadow max-h-40 overflow-y-auto mb-4">
+        {products
+    .filter(p =>
+      p.name.toLowerCase().includes((searchProduct || "").toLowerCase())
+    )
+    .map(prod => (
+      <div
+        key={prod.id}
+        onClick={() => {
+          setInvoiceDraft(d => ({
+            ...d,
+            items: [
+              ...d.items,
+              {
+                id: Date.now(),
+                productId: prod.id,
+                name: prod.name,
+                qty: 1,
+                price: prod.price
+              }
+            ]
+          }));
+          setSearchProduct(""); // vide après sélection
+        }}
+        className="px-3 py-2 hover:bg-indigo-100 cursor-pointer"
+      >
+        {prod.name}
+      </div>
+    ))}
+</div>
+
 
       <label>Date de livraison</label>
       <input type='date' value={invoiceDraft.deliveryDate || ''} onChange={e=>setInvoiceDraft(d=>({...d, deliveryDate: e.target.value}))} className='w-full px-2 py-2 border rounded mb-2' />
@@ -903,27 +1065,70 @@ function generateInvoicePDF(inv) {
 
     <div className='bg-white p-4 rounded shadow'>
       <h3 className='font-semibold mb-3'>Factures</h3>
+     {/* 🔍 BARRE DE RECHERCHE FACTURES */}
+      <input
+        type="text"
+        placeholder="🔍 Rechercher une facture..."
+        value={searchInvoice}
+        onChange={(e) => setSearchInvoice(e.target.value)}
+        className="w-full px-3 py-2 border rounded mb-3 shadow-sm"
+      />
+
       <div className='space-y-2'>
-        {invoices.map(inv => {
-          const total = (inv.items || []).reduce((s,i)=> s + Number(i.price||0) * Number(i.qty||0), 0);
+        {filteredInvoices.length === 0 && (
+          <div className="text-gray-500 text-sm italic">
+            Aucune facture trouvée.
+          </div>
+        )}
+
+        {filteredInvoices.map(inv => {
+          const total = (inv.items || []).reduce(
+            (s, i) => s + Number(i.price || 0) * Number(i.qty || 0),
+            0
+          );
+
           return (
-            <div key={inv.id} className='border rounded p-2 flex items-center justify-between'>
+            <div key={inv.id}
+              className='border rounded p-2 flex items-center justify-between'>
+              
               <div>
                 <div className='font-semibold'>{inv.number}</div>
                 <div className='text-xs text-gray-500'>{inv.date} • {inv.type}</div>
               </div>
+
               <div className='flex items-center gap-2'>
                 <div className='font-semibold'>{formatMG(total)}</div>
-                <button onClick={()=> generateInvoicePDF(inv)} className='px-2 py-1 bg-yellow-600 text-white rounded'>PDF</button>
-                <button onClick={()=> startEditInvoice(inv)} className='px-2 py-1 bg-green-500 text-white rounded' disabled={!isAdmin()}>Modifier</button>
-                <button onClick={()=> editInvoicePayment(inv)} className='px-2 py-1 bg-blue-600 text-white rounded' disabled={!isAdmin()}>Paiement</button>
-                <button onClick={()=> deleteInvoiceFirestore(inv.id)} className='px-2 py-1 bg-red-500 text-white rounded' disabled={!isAdmin()}>Supprimer</button>
+
+                <button onClick={() => generateInvoicePDF(inv)}
+                  className='px-2 py-1 bg-yellow-600 text-white rounded'>
+                  PDF
+                </button>
+
+                <button onClick={() => startEditInvoice(inv)}
+                  className='px-2 py-1 bg-green-500 text-white rounded'
+                  disabled={!isAdmin()}>
+                  Modifier
+                </button>
+
+                <button onClick={() => editInvoicePayment(inv)}
+                  className='px-2 py-1 bg-blue-600 text-white rounded'
+                  disabled={!isAdmin()}>
+                  Paiement
+                </button>
+
+                <button onClick={() => deleteInvoiceFirestore(inv.id)}
+                  className='px-2 py-1 bg-red-500 text-white rounded'
+                  disabled={!isAdmin()}>
+                  Supprimer
+                </button>
               </div>
+
             </div>
           );
         })}
       </div>
     </div>
+
   </div>
 )}
 
