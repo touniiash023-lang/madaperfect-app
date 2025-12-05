@@ -1,12 +1,17 @@
+// -------------------------------
+// Firebase imports
+// -------------------------------
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
   onAuthStateChanged 
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";   // ✅ AJOUT STORAGE
+import { getStorage } from "firebase/storage";
 
-// 🔐 Configuration via .env
+// -------------------------------
+// Firebase configuration
+// -------------------------------
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
@@ -16,25 +21,35 @@ const firebaseConfig = {
   appId: process.env.REACT_APP_FIREBASE_APP_ID
 };
 
-// 🔥 Initialisation app Firebase
+// -------------------------------
+// Initialize Firebase services
+// -------------------------------
 export const app = initializeApp(firebaseConfig);
 
-// 🔐 Authentification
 export const auth = getAuth(app);
-
-// 🗄️ Firestore
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 
-// 🖼️ STORAGE — nécessaire pour afficher ou uploader les images !
-export const storage = getStorage(app);   // ✅ IMPORTANT !
-
-// 🎭 Récupération automatique du rôle (admin, commercial...)
+// -------------------------------
+// Listen to user role (admin / commercial)
+// -------------------------------
 export const listenToUserRole = (callback) => {
   onAuthStateChanged(auth, async (user) => {
-    if (!user) return callback(null);
+    if (!user) {
+      callback(null);   // not logged
+      return;
+    }
 
-    // Récupère les custom claims
-    const token = await user.getIdTokenResult(true);
-    callback(token.claims.role || null);
+    try {
+      // Always refresh token to get the updated role
+      const token = await user.getIdTokenResult(true);
+
+      // Return role (admin, commercial, etc.)
+      callback(token.claims.role || null);
+
+    } catch (err) {
+      console.error("Erreur récupération rôle:", err);
+      callback(null);
+    }
   });
 };

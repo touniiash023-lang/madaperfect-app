@@ -5,12 +5,24 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { jsPDF } from 'jspdf';
 import { FiLogOut } from 'react-icons/fi';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { ChartBarIcon, BanknotesIcon, UsersIcon } from '@heroicons/react/24/solid';
 import dayjs from 'dayjs';
+import { listenToUserRole } from "./firebase";
+
 
 export default function App() {
+const [previewImage, setPreviewImage] = useState(null);
+
+  const [userRole, setUserRole] = useState(null);
+
+  useEffect(() => {
+    listenToUserRole((role) => {
+      console.log("ROLE UTILISATEUR =", role);
+      setUserRole(role);
+    });
+  }, []);
   // 🔍 Recherche produits
   const [searchClient, setSearchClient] = useState("");
 const [searchProduct, setSearchProduct] = useState("");
@@ -24,6 +36,7 @@ const [searchProduct, setSearchProduct] = useState("");
   const [products, setProducts] = useState([]);
   const [clients, setClients] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [productImages, setProductImages] = useState([]);
   // 🔍 Recherche factures
 const [searchInvoice, setSearchInvoice] = useState("");
   
@@ -154,29 +167,14 @@ const topProducts = (() => {
     return () => unsub();
   }, []);
 
-    async function handleProductImages(e) {
+    // 📌 1️⃣ Gestion des images : on sauvegarde les fichiers dans un state
+async function handleProductImages(e) {
   const files = e.target.files;
   if (!files || files.length === 0) return;
 
-  const storage = getStorage();  // ✅ CORRECTION ICI !
-  let uploaded = [];
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-
-    const fileRef = storageRef(storage, `products/${Date.now()}_${file.name}`);
-
-    await uploadBytes(fileRef, file);
-    const url = await getDownloadURL(fileRef);
-
-    uploaded.push(url);
-  }
-
-  setProductForm(f => ({
-    ...f,
-    images: [...(f.images || []), ...uploaded],
-  }));
+  setProductImages(files); // <-- IMPORTANT : on garde les fichiers ici
 }
+
 
 
   async function loadAll() {
@@ -206,35 +204,58 @@ const topProducts = (() => {
 
   // Product CRUD (admin-only for create/update/delete)
   async function saveProductFirestore() {
-    if (!productForm.name) return alert("Nom requis");
-    if (!isAdmin()) return alert("Action non autorisée (seulement superadmin)");
+  if (!productForm.name) return alert("Nom requis");
+  if (!isAdmin()) return alert("Action non autorisée (seulement superadmin)");
 
-    const payload = {
-      name: productForm.name,
-      price: productForm.price,
-      description: productForm.description,
-      link: productForm.link,
-      images: productForm.images || [],
-    };
+  const storage = getStorage();
+  let imageUrls = [];
 
-    if (productForm.id) {
-      await updateDoc(doc(db, "products", productForm.id), payload);
-    } else {
-      const docRef = await addDoc(collection(db, "products"), payload);
-      await updateDoc(docRef, { id: docRef.id });
+  // 🔥 Upload des nouvelles images
+  if (productImages && productImages.length > 0) {
+    for (let file of productImages) {
+      const storageRef = ref(storage, "products/" + Date.now() + "-" + file.name);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      imageUrls.push(url);
     }
-
-    setProductForm({
-      id: null,
-      name: "",
-      price: "",
-      description: "",
-      link: "",
-      images: [],
-    });
-
-    loadProducts();
   }
+
+  // 🔥 Si on MODIFIE un produit → garder les anciennes images
+  if (productForm.images && productForm.images.length > 0) {
+    imageUrls = [...productForm.images, ...imageUrls];
+  }
+
+  const payload = {
+    name: productForm.name,
+    price: productForm.price,
+    description: productForm.description,
+    link: productForm.link,
+    images: imageUrls,
+  };
+
+  // 🔥 UPDATE ou CREATE selon cas
+  if (productForm.id) {
+    await updateDoc(doc(db, "products", productForm.id), payload);
+  } else {
+    const docRef = await addDoc(collection(db, "products"), payload);
+    await updateDoc(docRef, { id: docRef.id });
+  }
+
+  // reset form
+  setProductForm({
+    id: null,
+    name: "",
+    price: "",
+    description: "",
+    link: "",
+    images: [],
+  });
+
+  setProductImages([]); // important
+  loadProducts();
+  alert("Produit enregistré !");
+}
+
 
   async function deleteProductFirestore(id) {
     if (!isAdmin()) return alert('Action non autorisée');
@@ -754,6 +775,16 @@ y += 22;
                       Voir lien fournisseur
                     </a>
                   )}
+                  {/* 🔥 NOUVEAU : BOUTON POUR VOIR L’IMAGE */}
+    {imagesArray.length > 0 && (
+  <button
+    onClick={() => setPreviewImage(imagesArray[0])}
+    className="text-blue-600 underline ml-4"
+  >
+    Voir image
+  </button>
+)}
+
                 </div>
               </div>
 
@@ -895,10 +926,40 @@ y += 22;
         >
           Annuler
         </button>
+        
       </div>
+      
     </div>
   </div>
+  
 )}
+
+{previewImage && (
+  <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+    
+    {/* CARD */}
+    <div className="bg-white p-4 rounded-lg shadow-xl max-w-3xl w-full relative">
+      
+      {/* BOUTON FERMER */}
+      <button
+        onClick={() => setPreviewImage(null)}
+        className="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+      >
+        ✕
+      </button>
+
+      {/* IMAGE */}
+      <img
+        src={previewImage}
+        alt="preview"
+        className="w-full max-h-[80vh] object-contain rounded"
+      />
+
+    </div>
+
+  </div>
+)}
+
 
 {/* ---------------------------
    CLIENTS
