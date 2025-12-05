@@ -1,17 +1,8 @@
-// -------------------------------
-// Firebase imports
-// -------------------------------
 import { initializeApp } from "firebase/app";
-import { 
-  getAuth, 
-  onAuthStateChanged 
-} from "firebase/auth";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { getStorage } from "firebase/storage"; 
 
-// -------------------------------
-// Firebase configuration
-// -------------------------------
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
@@ -21,35 +12,23 @@ const firebaseConfig = {
   appId: process.env.REACT_APP_FIREBASE_APP_ID
 };
 
-// -------------------------------
-// Initialize Firebase services
-// -------------------------------
+// 🔥 Initialisation Firebase
 export const app = initializeApp(firebaseConfig);
 
+// 🔥 Services Firebase
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// -------------------------------
-// Listen to user role (admin / commercial)
-// -------------------------------
-export const listenToUserRole = (callback) => {
+// 🔥 Fonction qui récupère le rôle de l'utilisateur
+export function listenToUserRole(callback) {
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
-      callback(null);   // not logged
+      callback(null);
       return;
     }
 
-    try {
-      // Always refresh token to get the updated role
-      const token = await user.getIdTokenResult(true);
-
-      // Return role (admin, commercial, etc.)
-      callback(token.claims.role || null);
-
-    } catch (err) {
-      console.error("Erreur récupération rôle:", err);
-      callback(null);
-    }
+    const token = await user.getIdTokenResult(true);
+    callback(token.claims.role || null);
   });
-};
+}

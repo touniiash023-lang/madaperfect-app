@@ -13,6 +13,7 @@ import { listenToUserRole } from "./firebase";
 
 
 export default function App() {
+  const storage = getStorage();
 const [previewImage, setPreviewImage] = useState(null);
 
   const [userRole, setUserRole] = useState(null);
@@ -172,9 +173,10 @@ async function handleProductImages(e) {
   const files = e.target.files;
   if (!files || files.length === 0) return;
 
-  setProductImages(files); // <-- IMPORTANT : on garde les fichiers ici
+  const arr = Array.from(files);
+  console.log("FILES UPLOADED =", arr);
+  setProductImages(arr);
 }
-
 
 
   async function loadAll() {
@@ -205,35 +207,41 @@ async function handleProductImages(e) {
   // Product CRUD (admin-only for create/update/delete)
   async function saveProductFirestore() {
   if (!productForm.name) return alert("Nom requis");
-  if (!isAdmin()) return alert("Action non autorisée (seulement superadmin)");
+  if (!isAdmin()) return alert("Action non autorisée (seulement admin/superadmin)");
 
   const storage = getStorage();
-  let imageUrls = [];
 
-  // 🔥 Upload des nouvelles images
+  // 1️⃣ Upload des nouvelles images
+  let newImages = [];
+
   if (productImages && productImages.length > 0) {
     for (let file of productImages) {
+      if (!(file instanceof File)) continue;
+
       const storageRef = ref(storage, "products/" + Date.now() + "-" + file.name);
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
-      imageUrls.push(url);
+
+      newImages.push(url);
     }
   }
 
-  // 🔥 Si on MODIFIE un produit → garder les anciennes images
-  if (productForm.images && productForm.images.length > 0) {
-    imageUrls = [...productForm.images, ...imageUrls];
-  }
+  // 2️⃣ Garder les anciennes images en cas de modification
+  const oldImages = Array.isArray(productForm.images) ? productForm.images : [];
 
+  // 3️⃣ Composition finale des images
+  const allImages = [...oldImages, ...newImages];
+
+  // 4️⃣ Préparer les données du produit
   const payload = {
     name: productForm.name,
     price: productForm.price,
     description: productForm.description,
     link: productForm.link,
-    images: imageUrls,
+    images: allImages
   };
 
-  // 🔥 UPDATE ou CREATE selon cas
+  // 5️⃣ UPDATE ou ADD
   if (productForm.id) {
     await updateDoc(doc(db, "products", productForm.id), payload);
   } else {
@@ -241,18 +249,19 @@ async function handleProductImages(e) {
     await updateDoc(docRef, { id: docRef.id });
   }
 
-  // reset form
+  // 6️⃣ Reset formulaire
   setProductForm({
     id: null,
     name: "",
     price: "",
     description: "",
     link: "",
-    images: [],
+    images: []
   });
 
-  setProductImages([]); // important
+  setProductImages([]);
   loadProducts();
+
   alert("Produit enregistré !");
 }
 
