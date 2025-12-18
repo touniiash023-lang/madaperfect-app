@@ -380,13 +380,14 @@ export default function App() {
 
     // client block
     y += 26;
-    doc.rect(margin, y, 520, 70); // outer
-    doc.rect(margin, y, 260, 70);
+    doc.rect(margin, y, 260, 95);
+    doc.rect(margin + 260, y, 260, 95);
     doc.setFont("helvetica","bold"); doc.text("Doit :", margin + 8, y + 16);
     const client = clients.find(c => c.id === inv.clientId) || {};
     doc.setFont("helvetica","normal");
-    doc.text(client.name || "", margin + 18, y + 36);
-    doc.text(client.address || "", margin + 18, y + 52);
+    doc.text("Adresse : " + (client.address || ""), margin + 18, y + 45);
+    doc.text("Téléphone : " + (client.phone || ""), margin + 18, y + 60);
+    doc.text("Email : " + (client.email || ""), margin + 18, y + 75);
     doc.rect(margin + 260, y, 260, 70);
     doc.setFont("helvetica","bold"); doc.text("Date de Livraison :", margin + 270, y + 16);
     doc.setFont("helvetica","normal");
