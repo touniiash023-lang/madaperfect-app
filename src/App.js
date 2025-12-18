@@ -277,7 +277,7 @@ export default function App() {
   }
   async function deleteProductFirestore(id) {
     if (!isAdmin()) return alert("Action non autorisée");
-    if (!confirm("Supprimer cet article ?")) return;
+    if (!window.confirm("Supprimer cet article ?")) return;
     await deleteDoc(doc(db, "products", id));
     await loadProducts();
   }
@@ -298,7 +298,7 @@ export default function App() {
   }
   async function deleteClientFirestore(id) {
     if (!isAdmin()) return alert("Action non autorisée");
-    if (!confirm("Supprimer ce client ?")) return;
+    if (!window.confirm("Supprimer ce client ?")) return;
     await deleteDoc(doc(db, "clients", id));
     await loadClients();
   }
@@ -330,7 +330,7 @@ export default function App() {
   }
   async function deleteInvoiceFirestore(id) {
     if (!isAdmin()) return alert("Action non autorisée");
-    if (!confirm("Supprimer cette facture ?")) return;
+    if (!window.confirm("Supprimer cette facture ?")) return;
     await deleteDoc(doc(db, "invoices", id));
     await loadInvoices();
   }
@@ -380,16 +380,19 @@ export default function App() {
 
     // client block
     y += 26;
-    doc.rect(margin, y, 260, 95);
-    doc.rect(margin + 260, y, 260, 95);
+    doc.rect(margin, y, 520, 92); // outer
+    doc.rect(margin, y, 260, 92);
     doc.setFont("helvetica","bold"); doc.text("Doit :", margin + 8, y + 16);
     const client = clients.find(c => c.id === inv.clientId) || {};
     doc.setFont("helvetica","normal");
-    doc.text("Adresse : " + (client.address || ""), margin + 18, y + 45);
-    doc.text("Téléphone : " + (client.phone || ""), margin + 18, y + 60);
-    doc.text("Email : " + (client.email || ""), margin + 18, y + 75);
-    doc.rect(margin + 260, y, 260, 70);
+    doc.text(client.name || "", margin + 18, y + 36);
+    doc.text(client.address || "", margin + 18, y + 50);
+    doc.text(client.phone || "", margin + 18, y + 63);
+    doc.text(client.email || "", margin + 18, y + 75);
+    doc.rect(margin + 260, y, 260, 92);
     doc.setFont("helvetica","bold"); doc.text("Date de Livraison :", margin + 270, y + 16);
+    doc.setFont("helvetica","normal");
+    doc.setFont("helvetica","bold"); doc.text("Lieu de Livraison :", margin + 270, y + 46);
     doc.setFont("helvetica","normal");
     doc.text(inv.deliveryDate || "", margin + 380, y + 16);
     doc.text(inv.deliveryAddress || "", margin + 380, y + 46);
